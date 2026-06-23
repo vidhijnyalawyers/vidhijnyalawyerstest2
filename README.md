@@ -1,20 +1,100 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Vidhijnyalawyerstest2
 
-# Run and deploy your AI Studio app
+A legal tech SaaS application providing AI-powered legal analysis tools with support for multiple languages (English, Chinese, Nepali).
 
-This contains everything you need to run your app locally.
+## Code Changes
 
-View your app in AI Studio: https://ai.studio/apps/3b88533f-ab80-4a52-85f6-3170eebe367a
+Removed all Google AI library dependencies and migrated to mock response architecture. All endpoints now return high-fidelity mock data without external API calls.
 
-## Run Locally
+### Implementation Changes
+```
+- Removed @google/genai dependency from package.json
+- Removed GoogleGenAI imports and Type enum references
+- Removed getGeminiClient() initialization logic
+- Removed try-catch blocks calling Gemini API
+- All 4 endpoints now use integrated mock responses
+- Added pnpm configuration with .npmrc
+```
 
-**Prerequisites:**  Node.js
+## Tech Stack
 
+### Technology Overview
+```
+Frontend:
+  - React 19
+  - Vite 6
+  - Tailwind CSS 4
+  - TypeScript (ES2022)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Backend:
+  - Express
+  - Node.js
+  - TypeScript
+
+Package Manager:
+  - pnpm (primary)
+  - npm (fallback)
+
+Database:
+  - XML-based persistence (clients_db.xml)
+```
+
+## Features
+
+- **Legal Aid Evaluation** - Assess eligibility for legal aid clinics based on project details
+- **Legal Brief Summarization** - Analyze and summarize legal documents and regulatory briefs
+- **Compliance Analysis** - Evaluate tech products against compliance frameworks (AI governance, smart contracts, IP strategy, privacy/cybersecurity)
+- **Legal Insights** - Curated technology law news and regulatory updates
+- **Multilingual Support** - All endpoints support English, Chinese (中文), and Nepali (नेपाली)
+
+## Getting Started with pnpm
+
+**Prerequisites:** Node.js 18+ and pnpm
+
+### Install pnpm Globally
+```bash
+npm install -g pnpm
+```
+
+### Clone and Setup Project
+```bash
+git clone <repository-url>
+cd vidhijnyalawyerstest2
+pnpm install
+```
+
+### Start Development Server
+```bash
+pnpm dev
+```
+The app will be available at `http://localhost:3000`
+
+### Build for Production
+```bash
+pnpm build
+pnpm start
+```
+
+## Available Scripts
+
+### Command Reference
+```bash
+pnpm dev       # Start Vite dev server with Express backend (http://localhost:3000)
+pnpm build     # Build frontend bundle + bundle backend to dist/server.cjs
+pnpm start     # Run production build from dist/
+pnpm lint      # Run TypeScript type checking
+pnpm clean     # Remove dist/ and build artifacts
+```
+
+### Development Details
+```
+- Frontend builds with Vite (hot module reloading)
+- Backend runs via tsx (TypeScript execution)
+- Both bundled together in production
+- Express server runs on port 3000
+- Vite HMR can be disabled via DISABLE_HMR env var
+```
+
+## Development
+
+For detailed development conventions, build commands, and architecture patterns, see [AGENTS.md](AGENTS.md).

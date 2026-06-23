@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -12,25 +11,7 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Gemini client lazily to avoid startup crashes if key is initially absent
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    return null;
-  }
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return aiClient;
-}
+
 
 // URL fetching helper for Legal Brief Summarizer
 async function fetchUrlContent(url: string): Promise<string> {
@@ -83,13 +64,10 @@ app.post("/api/evaluate-legal-aid", async (req, res) => {
     return res.status(400).json({ error: "Missing required core application fields." });
   }
 
-  const ai = getGeminiClient();
+  // Using localized pro-bono assessment
+  console.log("Utilizing localized pro-bono assessment.");
 
-  // Fallback to high-fidelity mock advisory assessment when no live Gemini API is provisioned
-  if (!ai) {
-    console.warn("GEMINI_API_KEY lacks active deployment. Utilizing localized pro-bono assessment fallback.");
-
-    const mockEvaluations: Record<string, any> = {
+  const mockEvaluations: Record<string, any> = {
       en: {
         title: `Clinical Suitability Intake: Project ${projectName}`,
         approved: budget !== 'over-100k',
@@ -131,89 +109,8 @@ app.post("/api/evaluate-legal-aid", async (req, res) => {
       }
     };
 
-    const sel = mockEvaluations[language] || mockEvaluations.en;
-    return res.json(sel);
-  }
-
-  try {
-    const sysInstruction = `You are an elite, socially motivated Technology Counsel, Pro-Bono Coordinator, and Venture Architect.
-Your task is to analyze application files for technology pro-bono legal aid clinics, determine eligibility based on core public interest parameters (such as low budget, open-source compliance, or data-rights advocacy), and present a highly structured eligibility report.
-Output strictly in the requested language. Language constraint: ${language === 'zh' ? 'Chinese (中文)' : language === 'ne' ? 'Nepali (नेपाली)' : 'English'}.`;
-
-    const promptText = `
-      Perform a professional eligibility audit on the following legal-aid application:
-      - Applicant Name / Contact: ${name} (Email: ${email})
-      - Project Name: ${projectName}
-      - Repository/GitHub: ${githubUrl || "None provided"}
-      - Primary Target Area: ${primaryNeed}
-      - Annual Operational Budget: ${budget}
-      - Project Core Description: ${description}
-
-      Guidance Guidelines:
-      - Approved status (approved: true) should be awarded to projects with a budget under $100k ('0-10k', '10k-50k', '50k-100k') which act as public utilities, open source libraries, privacy tools, or decentralized utilities.
-      - If the budget is 'over-100k', they likely should be designated (approved: false) and encouraged to leverage paid consultation, while still receiving constructive roadmap feedback.
-      - Make the 'advisoryOpinion' dense, legally precise, and specific to the technologies mentioned in their description. Choose a suited consultationDate (e.g., 'Thursday at 10 AM UTC' or similar).
-      - Provide 3 detailed 'remediationRoadmap' steps.
-
-      Output language: ${language === 'zh' ? 'Chinese' : language === 'ne' ? 'Nepali' : 'English'}.
-      Format output strictly as a single JSON object matching our responseSchema.
-    `;
-
-    console.log(`Calling Gemini-3.5-flash to evaluate legal aid application for Project: ${projectName}...`);
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: promptText,
-      config: {
-        systemInstruction: sysInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ["approved", "score", "consultationDate", "title", "advisoryOpinion", "remediationRoadmap"],
-          properties: {
-            approved: { 
-              type: Type.BOOLEAN, 
-              description: "Whether the applicant is approved for legal aid representation (budget under 100k, values: 0-10k, 10k-50k, 50k-100k are eligible)" 
-            },
-            score: { 
-              type: Type.INTEGER, 
-              description: "Numeric rating from 1 to 100 assessing the social utility and legal alignment of the venture for clinical assistance" 
-            },
-            consultationDate: { 
-              type: Type.STRING, 
-              description: "Recommended day and slot (e.g. 'Monday at 9:00 AM UTC')" 
-            },
-            title: { 
-              type: Type.STRING, 
-              description: "An authoritative intake tile (e.g. 'Eligibility Decided: Lib-Telemetry Safeguards')" 
-            },
-            advisoryOpinion: { 
-              type: Type.STRING, 
-              description: "A professional technology-law analysis. Detail the legal frameworks (GPL, SEC, GDPR) and liability exposures relevant to their description." 
-            },
-            remediationRoadmap: {
-              type: Type.ARRAY,
-              description: "Three detailed legal or engineering mitigation targets the developers should achieve",
-              items: { type: Type.STRING }
-            }
-          }
-        },
-        temperature: 0.15
-      }
-    });
-
-    const reportText = response.text;
-    if (!reportText) {
-      throw new Error("No output generated from live Gemini eligibility assessor.");
-    }
-
-    const parsedReport = JSON.parse(reportText.trim());
-    parsedReport.apiKeyMissing = false;
-    res.json(parsedReport);
-
-  } catch (error: any) {
-    console.error("Gemini Legal-Aid evaluation fail:", error);
-    res.status(500).json({ error: "Failed to evaluate application criteria. " + (error?.message || error) });
-  }
+  const sel = mockEvaluations[language] || mockEvaluations.en;
+  res.json(sel);
 });
 
 // Legal Brief Summarizer API Endpoint
@@ -224,13 +121,10 @@ app.post("/api/summarize-brief", async (req, res) => {
     return res.status(400).json({ error: "Please paste a legal text brief or specify an address URL to summarize." });
   }
 
-  const ai = getGeminiClient();
-
-  // If no Gemini API is configured, return the high-fidelity mock summaries fallback
-  if (!ai) {
-    console.warn("GEMINI_API_KEY lacks active deployment. Utilizing localized mock summary fallback.");
-    
-    const mockSummaries: Record<string, any> = {
+  // Using localized mock summary fallback
+  console.log("Utilizing localized mock summary fallback.");
+  
+  const mockSummaries: Record<string, any> = {
       en: {
         title: "Executive Synthesis: Regulatory Compliance Advisory",
         executiveSummary: "[SIMULATION BASELINE] This briefing outlines high-priority statutory risks, open-source viral licensures, and governance frameworks mapping to cryptographic systems and algorithmic deployments. Legal analysis reveals structural friction under cross-border data protection acts and model transparency auditing guidelines. (Note: Inject your GEMINI_API_KEY in Settings to enable real-time Gemini LLM summaries).",
@@ -330,102 +224,7 @@ app.post("/api/summarize-brief", async (req, res) => {
     };
 
     const sel = mockSummaries[language] || mockSummaries.en;
-    return res.json(sel);
-  }
-
-  try {
-    let fetchedContent = "";
-    if (resourceLink.trim()) {
-      console.log(`Starting background resource fetch for Gemini summarizer: ${resourceLink}...`);
-      fetchedContent = await fetchUrlContent(resourceLink);
-    }
-
-    const sysInstruction = `You are a highly analytical, specialized Technology Lawyer and Systems compliance Auditor with dual-degree credentials.
-Your task is to analyze the user pased legal briefs, regulatory filings, contracts, or technology agreements, synthesize their raw scope, and generate a meticulously structured, legally rigorous executive summary.
-Ensure all outputs strictly match the requested language. Language constraint: ${language === 'zh' ? 'Chinese (中文)' : language === 'ne' ? 'Nepali (नेपाली)' : 'English'}.`;
-
-    const promptText = `
-      Perform an elite corporate tech-compliance briefing synthesis on the provided material.
-      Provide detailed legislative citations and technical advice.
-
-      === pasted legal material ===
-      ${text || "No custom text was pasted by the user."}
-
-      === fetched online resource content ===
-      ${fetchedContent || "No online content fetched."}
-
-      === requested language ===
-      Output must be strictly in: ${language === 'zh' ? 'Chinese' : language === 'ne' ? 'Nepali' : 'English'}.
-
-      Fill out the output following our responseSchema. Format output strictly as a single JSON object.
-    `;
-
-    console.log(`Calling Gemini-3.5-flash to summarize brief in language: ${language}...`);
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: promptText,
-      config: {
-        systemInstruction: sysInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ["title", "executiveSummary", "keyTakeaways", "criticalRisks", "actionableComplianceSteps", "applicableLegislation"],
-          properties: {
-            title: { 
-              type: Type.STRING, 
-              description: "A short, authoritative, high-fidelity title for the summary (e.g., 'Regulatory Impact Analysis: Data Sovereignty Compliance')" 
-            },
-            executiveSummary: { 
-              type: Type.STRING, 
-              description: "A precise, dense executive summary paragraph (3-4 sentences) capturing the core issues, compliance status, and legal liabilities." 
-            },
-            keyTakeaways: {
-              type: Type.ARRAY,
-              description: "A solid list of 3 items detailing the most vital technical legal takeaways or rule highlights with precise section citations",
-              items: { type: Type.STRING }
-            },
-            criticalRisks: {
-              type: Type.ARRAY,
-              description: "An array of 1 to 3 critical business or engineering risk exposures found in the text",
-              items: {
-                type: Type.OBJECT,
-                required: ["risk", "description", "severity"],
-                properties: {
-                  risk: { type: Type.STRING, description: "Actionable title naming the compliance or litigation exposure" },
-                  description: { type: Type.STRING, description: "Detailed analysis of regulatory penalties, civil liabilities, or technical gaps" },
-                  severity: { type: Type.STRING, description: "Must be exactly HIGH, MEDIUM, or LOW" }
-                }
-              }
-            },
-            actionableComplianceSteps: {
-              type: Type.ARRAY,
-              description: "A step-by-step technical mitigation and remediation guide for engineering or product teams to follow",
-              items: { type: Type.STRING }
-            },
-            applicableLegislation: {
-              type: Type.ARRAY,
-              description: "Meticulous legal frameworks, treaties, acts, or cases mentioned or relevant (e.g., GDPR Art. 49, EU AI Act, 15 U.S.C. § 1)",
-              items: { type: Type.STRING }
-            }
-          }
-        },
-        temperature: 0.15
-      }
-    });
-
-    const reportText = response.text;
-    if (!reportText) {
-      throw new Error("No output text received from live Gemini summarizer.");
-    }
-
-    const parsedReport = JSON.parse(reportText.trim());
-    parsedReport.apiKeyMissing = false;
-    res.json(parsedReport);
-
-  } catch (error: any) {
-    console.error("Gemini Legal Brief Summarizer failure:", error);
-    res.status(500).json({ error: "Failed to compile AI brief summary. " + (error?.message || error) });
-  }
+    res.json(sel);
 });
 
 // TechLaw Compliance Sandbox API Endpoint
@@ -436,8 +235,9 @@ app.post("/api/analyze-compliance", async (req, res) => {
     return res.status(400).json({ error: "Product description or draft code/document is required as input." });
   }
 
-  const ai = getGeminiClient();
-
+  // Using high-fidelity local tech-law analysis
+  console.log("Utilizing high-fidelity local tech-law analysis.");
+  
   // Mapping sector to human readable context
   const sectorDescriptions: Record<string, string> = {
     'ai-governance': 'AI Governance & Model Compliance (Model safety, scraping, copyright, EU AI Act, transparency disclosure)',
@@ -448,9 +248,8 @@ app.post("/api/analyze-compliance", async (req, res) => {
 
   const targetedSector = sectorDescriptions[sector] || "General Tech Law Compliance";
 
-  if (!ai) {
-    // If API key is missing, return fallback response detailing the setup instructions but still serving high-fidelity simulation
-    console.warn("GEMINI_API_KEY is not defined. Using high-fidelity local tech-law analysis fallback.");
+  // Using high-fidelity local tech-law analysis fallback
+  console.log("Using high-fidelity local tech-law analysis fallback.");
     
     // Custom simulated feedbacks localized for EN, ZH, and NE
     const mockFeedbacks: Record<string, Record<string, any>> = {
@@ -681,108 +480,14 @@ app.post("/api/analyze-compliance", async (req, res) => {
     const currentMockLang = mockFeedbacks[language] || mockFeedbacks.en;
     const fallbackResponse = currentMockLang[sector] || currentMockLang['ai-governance'] || mockFeedbacks.en['ai-governance'];
     fallbackResponse.apiKeyMissing = true;
-    return res.json(fallbackResponse);
-  }
-
-  try {
-    const prompt = `
-      You are a highly analytical, specialized Technology Lawyer and Systems Auditor.
-      Analyze the following tech-venture product concept or contract draft details against the regulatory guidelines of: ${targetedSector}.
-
-      CRITICAL MANDATE: You MUST provide your entire analysis, summaries, titles, descriptions, recommendations, statutory considerations, and suggested clauses in the following language: ${language === 'zh' ? 'Chinese (中文)' : language === 'ne' ? 'Nepali (नेपाली)' : 'English'}.
-
-      === TARGET PROJECT / TEXT COMPONENT ===
-      ${productDescription}
-
-      === OPTIONAL EXTRA CONTEXT OR CLAUSES ===
-      ${contextText || 'None provided.'}
-
-      === AUDITING PARAMETERS ===
-      1. Calculate an integer legal compliance score from 0 (extreme liability / critical non-compliance) to 100 (exemplary technical legal structure).
-      2. Categorize the overarching risk level as: "LOW", "MEDIUM", or "HIGH".
-      3. Identify specific "gaps" (minimum 1, maximum 3) outlining real technical compliance issues.
-      4. For EACH gap, write a realistic, legally sound drafted clause ("suggestedClause") that can mitigate the issue or be injected into terms/contracts.
-      5. Include any specific statutory chapters or regulations under "statutoryConsiderations" (e.g., "EU AI Act Art. 12", "GDPR Art 32").
-      6. Outline strategic "mitigationSteps" for the engineering team.
-
-      Format your output STRICTLY as a single JSON object fitting our responseSchema. Keep text highly professional, direct, analytical, and tailored to developer-attorneys.
-    `;
-
-    console.log(`Analyzing project sector: ${sector} with Gemini in language: ${language}...`);
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ["riskLevel", "score", "analysisSummary", "gaps", "statutoryConsiderations", "mitigationSteps"],
-          properties: {
-            riskLevel: { 
-              type: Type.STRING, 
-              description: "Must be exactly LOW, MEDIUM, or HIGH" 
-            },
-            score: { 
-              type: Type.INTEGER, 
-              description: "Compliance safety score integer from 0 to 100" 
-            },
-            analysisSummary: { 
-              type: Type.STRING, 
-              description: "Comprehensive critique of compliance, identifying core exposures, structural issues, and liability risks." 
-            },
-            gaps: {
-              type: Type.ARRAY,
-              description: "Array of specific compliance gaps discovered.",
-              items: {
-                type: Type.OBJECT,
-                required: ["title", "description", "severity", "suggestedClause"],
-                properties: {
-                  title: { type: Type.STRING, description: "Actionable name of the compliance gap found" },
-                  description: { type: Type.STRING, description: "Detailed explanation of why this is a risk under the given regulatory regime" },
-                  severity: { type: Type.STRING, description: "Can be LOW, MEDIUM, or HIGH" },
-                  suggestedClause: { type: Type.STRING, description: "A concrete legally drafted boilerplate clause, term, or engineering strategy statement that resolves this specific exposure" }
-                }
-              }
-            },
-            statutoryConsiderations: {
-              type: Type.ARRAY,
-              description: "List of relevant legislative rules, articles, laws, or precedents",
-              items: { type: Type.STRING }
-            },
-            mitigationSteps: {
-              type: Type.ARRAY,
-              description: "Specific step-by-step guidance for the technical team to follow to achieve a compliant deploy",
-              items: { type: Type.STRING }
-            }
-          }
-        },
-        temperature: 0.2
-      }
-    });
-
-    const reportText = response.text;
-    if (!reportText) {
-      throw new Error("No output text received from Gemini server-side call.");
-    }
-
-    const parsedReport = JSON.parse(reportText.trim());
-    parsedReport.apiKeyMissing = false;
-    res.json(parsedReport);
-
-  } catch (error: any) {
-    console.error("Gemini Compliance Analysis Failure:", error);
-    res.status(500).json({ error: "Failed to execute compliance analysis. " + (error?.message || error) });
-  }
+    res.json(fallbackResponse);
 });
 
 // TechLaw News & Legal Insights Grounded API Endpoint
 app.post("/api/legal-insights", async (req, res) => {
   const { language = 'en' } = req.body;
-  const ai = getGeminiClient();
-
-  // 5 high-fidelity localized fallback articles
-  const fallbackInsights = {
+  // Using localized mock insights fallback
+  console.log("Utilizing localized mock insights fallback.");
     en: [
       {
         title: "EU AI Act Implementation Timeline and First Audit Precedents",
@@ -913,88 +618,8 @@ app.post("/api/legal-insights", async (req, res) => {
 
   const selectedFallback = fallbackInsights[language as keyof typeof fallbackInsights] || fallbackInsights.en;
 
-  if (!ai) {
-    console.log("No GEMINI_API_KEY found, serving high-fidelity placeholder insights.");
-    return res.json({ insights: selectedFallback, source: "mock-cache", apiKeyMissing: true });
-  }
-
-  try {
-    const prompt = `Retrieve 5 actual and extremely significant technology law news stories, legislation updates, lawsuits, or regulatory decisions related to:
-1. Artificial Intelligence safety or compliance (e.g. EU AI Act, FTC algorithmic disgorgement, or US state laws).
-2. Open Source software licensing liabilities or litigation.
-3. Privacy, Data Sovereignty, or cross-border cloud restrictions.
-4. Smart contracts, DAO legal structures, crypto-assets, or web3 liability rulings.
-
-Ensure all retrieved news are recent or highly influential.
-Your response MUST be formatted strictly as a JSON object containing a property 'insights' which is an array of 5 objects.
-Each object within 'insights' must have these exact keys:
-- 'title': (string) authoritative and interesting headline
-- 'source': (string) reliable news journal, public agency, or legal blog
-- 'date': (string) estimated month/year (e.g., "June 2026" or "May 2026")
-- 'summary': (string) clear 2-3 sentence summary detailing the legal implications, risks, and technical background.
-- 'url': (string) a valid web link pointing to the article source from the google search grounding
-- 'category': (string) one of "AI Regulation", "Open Source", "Privacy", "DAO/Web3", or "Digital Sovereignty"
-
-Please also output the response in the user requested language: "${language === 'zh' ? 'Chinese (中文)' : language === 'ne' ? 'Nepali (नेपाली)' : 'English (en)'}" where appropriate (translate title, source, summary, etc. to make it perfectly localized. Keep category names as standard Latin categories: "AI Regulation", "Open Source", "Privacy", "DAO/Web3", "Digital Sovereignty").
-
-Ensure you return ONLY a raw JSON string of this object. Do not include markdown \`\`\`json code blocks, do not include conversational lead-ins or wrap with anything else. Just the pure valid JSON.`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ["insights"],
-          properties: {
-            insights: {
-              type: Type.ARRAY,
-              description: "List of 5 legal news insights",
-              items: {
-                type: Type.OBJECT,
-                required: ["title", "source", "date", "summary", "url", "category"],
-                properties: {
-                  title: { type: Type.STRING },
-                  source: { type: Type.STRING },
-                  date: { type: Type.STRING },
-                  summary: { type: Type.STRING },
-                  url: { type: Type.STRING },
-                  category: { type: Type.STRING }
-                }
-              }
-            }
-          }
-        }
-      }
-    });
-
-    const text = response.text;
-    if (!text) {
-      throw new Error("Empty response text from Gemini Search Grounding.");
-    }
-
-    const data = JSON.parse(text);
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    const sources = groundingMetadata?.groundingChunks || [];
-
-    res.json({
-      insights: data.insights || selectedFallback,
-      source: "gemini-grounded",
-      sourcesRef: sources,
-      apiKeyMissing: false
-    });
-
-  } catch (error: any) {
-    console.error("Gemini Search Grounded Legal Insights failed. Recovering with fallback: ", error);
-    res.json({
-      insights: selectedFallback,
-      source: "fallback-recovery",
-      errorDetails: error?.message || error,
-      apiKeyMissing: false
-    });
-  }
+  console.log("Serving high-fidelity placeholder insights.");
+  res.json({ insights: selectedFallback, source: "mock-cache", apiKeyMissing: true });
 });
 
 // ==========================================
