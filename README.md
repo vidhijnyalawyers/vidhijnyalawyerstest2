@@ -7,7 +7,7 @@ A legal tech SaaS application providing AI-powered legal analysis tools with sup
 Removed all Google AI library dependencies and migrated to mock response architecture. All endpoints now return high-fidelity mock data without external API calls.
 
 ### Implementation Changes
-```
+```markdown
 - Removed @google/genai dependency from package.json
 - Removed GoogleGenAI imports and Type enum references
 - Removed getGeminiClient() initialization logic
@@ -19,7 +19,7 @@ Removed all Google AI library dependencies and migrated to mock response archite
 ## Tech Stack
 
 ### Technology Overview
-```
+```markdown
 Frontend:
   - React 19
   - Vite 6
@@ -87,7 +87,7 @@ pnpm clean     # Remove dist/ and build artifacts
 ```
 
 ### Development Details
-```
+```markdown
 - Frontend builds with Vite (hot module reloading)
 - Backend runs via tsx (TypeScript execution)
 - Both bundled together in production
