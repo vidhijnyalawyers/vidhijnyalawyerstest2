@@ -488,6 +488,7 @@ app.post("/api/legal-insights", async (req, res) => {
   const { language = 'en' } = req.body;
   // Using localized mock insights fallback
   console.log("Utilizing localized mock insights fallback.");
+  const fallbackInsights = {
     en: [
       {
         title: "EU AI Act Implementation Timeline and First Audit Precedents",
