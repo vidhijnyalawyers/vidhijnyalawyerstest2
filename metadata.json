@@ -1,0 +1,6 @@
+{
+  "name": "Vidhijnya Lawyers",
+  "description": "Vidhijnya Lawyers is a premier technology-focused, full-service legal consultancy and AI compliance practice, offering multi-jurisdictional audits and smart legal architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
